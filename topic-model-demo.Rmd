@@ -27,26 +27,26 @@ We start by generating what eventually will be a document-term matrix.  Rows rep
 
 ## Topic Probabilities
 
-We begin the simulation by creating topic probabilities $\theta$. There will be 3 topics. Half of our documents will have probabilities of topics for them ($\theta_1$) which will be notably different from the other half ($\theta_2$).   We'll use the <span class="pack">DirichletReg</span> package for the <span class="func">rdirichlet</span> function, but it actually could be used to model topic probabilities via additional covariates if so desired.
+We begin the simulation by creating topic probabilities $\theta$. There will be $k=3$ topics. Half of our documents will have probabilities of topics for them ($\theta_1$) which will be notably different from the other half ($\theta_2$).   Specifically, the first half will show higher probability of topic 'A' and 'B', while the second half of documents show higher probability of topic 'C'.
 
-```{r}
-library(DirichletReg) # for rdirichlet
+```{r topic_probabilities}
 library(tidyverse)
 
 ### Explicit representation, as depicted in the usual plate diagram
-Ndocs = 100                                        # Number of documents
+Ndocs = 200                                        # Number of documents
 WordsPerDoc = rpois(Ndocs, 100)                    # Avg. number of total words/terms in a document
-thetaList = list(c(A=.6, B=.25, C=.15), c(A=.1, B=.1, C=.8))   # Topic proportions for first and second half of data
-theta_1 = t(replicate(Ndocs/2, thetaList[[1]]))    # First half of documents show higher probability of topic '1' and '2'
-theta_2 = t(replicate(Ndocs/2, thetaList[[2]]))    # Second half of documents show higher probability of topic '3'
-theta = rbind(theta_1, theta_2)                    # Topic probabilities for 500 docs
+thetaList = list(c(A=.60, B=.25, C=.15),           # Topic proportions for first and second half of data 
+                 c(A=.10, B=.10, C=.80))
+theta_1 = t(replicate(Ndocs/2, thetaList[[1]]))
+theta_2 = t(replicate(Ndocs/2, thetaList[[2]]))
+theta = rbind(theta_1, theta_2)                    # Topic probabilities for all 500 docs
 ```
 
 ## Topic Assignments and Labels
 
-With topic probabilites in hand we'll draw topic assignments from a categorical distribution (see the commented line at the end), which is the multinomial with `size=1`. 
+With topic probabilites in hand, we'll draw topic assignments from a categorical distribution (see the commented line at the end), which is the multinomial with `size=1`. 
 
-```{r}
+```{r, topic_assign}
 firsthalf = 1:(Ndocs/2)
 secondhalf = (Ndocs/2+1):Ndocs
 
@@ -61,21 +61,32 @@ z = apply(Z, 1, function(row) which(row==1))                          # topic as
 
 ## Topics
 
-Next we need the topics themselves. Topics are probability distributions of terms. In what follows we'll use the dirichlet distribution provide the prior probabilities of topics for each term.  We'll make the first ~40% of terms go with topic 1, the last ~40% go with topic 3, and the middle more associated with topic 2. To give a sense of the alpha settings, `alpha=c(8,1,1)` would result in topic probabilities of .8, .1, .1, as would `alpha=c(80,10,10)`, though the latter would serve as a much stronger prior.
+Next we need the topics themselves. Topics are probability distributions of terms. In what follows we'll use the dirichlet distribution provide the prior probabilities of topics for each term. With topic A, we'll make the first ~40% of terms have a higher probability of occurring, the last ~40% go with topic C, and the middle more associated with topic B. To give a sense of the alpha settings, `alpha=c(8,1,1)` would result in topic probabilities of .8, .1, .1, as would `alpha=c(80,10,10)`, though the latter would serve as a much stronger prior. We'll use the <span class="pack">gtools</span> package for the <span class="func">rdirichlet</span> function.
 
 ```{r}
+library(gtools)
 Nterms = max(WordsPerDoc)
 breaks = quantile(1:Nterms, c(.4,.6,1)) %>% round()
 cuts = list(1:breaks[1], (breaks[1]+1):breaks[2], (breaks[2]+1):Nterms)
 
-B_k_1 = rdirichlet(n=length(cuts[[1]]), alpha=c(8,1,1))         # topics, i.e. distribution over terms
-B_k_2 = rdirichlet(n=length(cuts[[2]]), alpha=c(1,8,1))         # topics, i.e. distribution over terms
-B_k_3 = rdirichlet(n=length(cuts[[3]]), alpha=c(1,1,8))         # topics, i.e. distribution over terms
-B_k = rbind(B_k_1, B_k_2, B_k_3)
+B_k = matrix(0, ncol=3, nrow=Nterms)
+B_k[,1] = rdirichlet(n=1, alpha=c(rep(10, length(cuts[[1]])),      # topics for 1st 40% of terms
+                                  rep(1, length(cuts[[2]])),
+                                  rep(1, length(cuts[[3]]))))
+B_k[,2] = rdirichlet(n=1, alpha=c(rep(1, length(cuts[[1]])),       # topics for middle 20%
+                                  rep(10, length(cuts[[2]])),
+                                  rep(1, length(cuts[[3]]))))
+B_k[,3] = rdirichlet(n=1, alpha=c(rep(1, length(cuts[[1]])),       # topics for last 40% of terms
+                                  rep(1, length(cuts[[2]])),
+                                  rep(10, length(cuts[[3]]))))
+B_k %>% d3heatmap::d3heatmap(Rowv=F, Colv=F, colors=viridis::inferno(n=300))
+```
 
-# given topic assignment, draw words according to doc size
+Now, given the topic assignment, we draw words for each document according to its size via a multinomial draw.
+
+```{r}
 wordlist_1 = sapply(1:Ndocs, function(i) t(rmultinom(1, WordsPerDoc[i], B_k[,z[i]]))  
-                  , simplify = F)  
+                    , simplify = F)  
 
 # smash to doc-term matrix
 ldadat_1 = do.call(rbind, wordlist_1)
@@ -87,7 +98,7 @@ wordlist_1 = lapply(wordlist_1, function(wds) rep(paste0('word',1:length(wds)), 
 ```
 
 
-With a matrix approach, we don't need explicit topic label, just the topic indictator matrix and topic probabilities. Later on I provide some code that will let you see this for yourself that the results are similar, but we'll just stick to one result to keep things clear.
+With a matrix approach, we don't need an explicit topic label, just the topic indictator matrix and topic probabilities. Later on I provide some code that will let you see this for yourself that the results are similar, but we'll just stick to one result to keep things clear.
 
 ```{r}
 ZB = tcrossprod(Z, B_k)                                                
@@ -99,8 +110,8 @@ colnames(ldadat_2) = paste0('word', 1:Nterms)
 
 Just out of curiosity, we can see how these two random instances of topics and words line up.
 
-```{r}
-# curiosity, overlap of words
+```{r, eval=FALSE}
+# overlap of words
 nWordOverlap = rep(NA, Ndocs)
 percWordOverlap = rep(NA, Ndocs)
 for (i in 1:Ndocs){
@@ -117,19 +128,16 @@ summary(percWordOverlap)
 
 We're now ready to run the models.   Depending on the number of documents, terms, and other settings, it is possible to get an unsatisfactory/random result. Usually a redo is enough to recover topic probabilities, but the commented settings are an attempt to get better result from the outset.  However, they will notably slow things down.
 
-
-
 ```{r, eval=F}
 library(topicmodels)
 controlSettings = list(nstart=10, verbose=100)
-
 # others var=list(iter.max=5000, tol=10e-8), em=list(iter.max=5000, tol=10e-8)
 LDA_1 = LDA(ldadat_1, k=3, control=controlSettings)
 # LDA_2 = LDA(ldadat_2, k=3, control=controlSettings)
 save(LDA_1, LDA_2, file='lda_results.RData')
 ```
 
-Let's look at the results. To be clear, the topic labels are *completely arbitrary*, so what is topic "1" for one analysis might be topic "3" for another. The main thing is the recovery of the distribution of the topics, which will be roughly `r theta_1[1,]` for the first half (arbitrary order), and `r theta_2[1,]` for the other. I show cho
+Let's look at the results. To be clear, the topic labels are *completely arbitrary*, so what is topic "1" for one analysis might be topic "3" for another. The main thing is the recovery of the distribution of the topics, which will be roughly `r theta_1[1,]` for the first half (arbitrary order), and `r theta_2[1,]` for the other. 
 
 ```{r echo=-(1:2)}
 load('lda_results.RData')

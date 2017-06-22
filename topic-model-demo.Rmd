@@ -13,15 +13,16 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(message=F, error=F, warning=F, comment=NA, R.options=list(width=120), cache=T)
 ```
-# Intro
 
-This is a quick demo of a standard LDA for topic modeling for those that want to dig a little deeper than merely getting a result from a package command. As the readme for this repo notes, I did this once and then tried to return to it a couple years later, so I'm not sure how clear it will come off. But the basic idea is to first simulate some documents, and then use the <span class="pack">topicmodels</span> package to recover the topics via latent dirichlet allocation.  You can find a basic overview of topic models in a variety of places, and I'll eventually have a chapter in my [graphical and latent variable models document](http://m-clark.github.io/docs/sem). 
+# Introduction
+
+This is a quick demonstration of a standard LDA for topic modeling for those that want to dig a little deeper than merely getting a result from a package command. As the readme for this repo notes, I did this once and then tried to return to it a couple years later, so I'm not sure how clear it will come off. But the basic idea is to first simulate some documents, and then use the <span class="pack">topicmodels</span> package to recover the topics via latent dirichlet allocation.  You can find a basic overview of topic models in a variety of places, and I'll eventually have a chapter in my [graphical and latent variable models document](http://m-clark.github.io/docs/sem). 
 
 Suffice it to say one can approach this in (at least) one of two ways. In one sense, LDA is a dimension reduction technique, much like the family of techniques that includes PCA, factor analysis, non-negative matrix factorization etc.  We'll take a whole lot of terms, loosely defined, and boil them down to a few topics.  Another way to think about this is more from the measurement model perspective of factor analysis, where we are keenly interested in interpretation of the result, and want to know both what terms are associated with which topics, and what documents are more likely to present which topics.
 
 
 
-# Generate Data
+# Generating Documents
 
 We start by generating what eventually will be a document-term matrix.  Rows represent documents, columns terms.  Terms are usually words but could be any n-gram of interest.
 
@@ -33,7 +34,7 @@ We begin the simulation by creating topic probabilities $\theta$. There will be 
 library(tidyverse)
 
 ### Explicit representation, as depicted in the usual plate diagram
-Ndocs = 200                                        # Number of documents
+Ndocs = 500                                        # Number of documents
 WordsPerDoc = rpois(Ndocs, 100)                    # Avg. number of total words/terms in a document
 thetaList = list(c(A=.60, B=.25, C=.15),           # Topic proportions for first and second half of data 
                  c(A=.10, B=.10, C=.80))
@@ -134,6 +135,9 @@ controlSettings = list(nstart=10, verbose=100)
 # others var=list(iter.max=5000, tol=10e-8), em=list(iter.max=5000, tol=10e-8)
 LDA_1 = LDA(ldadat_1, k=3, control=controlSettings)
 # LDA_2 = LDA(ldadat_2, k=3, control=controlSettings)
+
+
+
 save(LDA_1, LDA_2, file='lda_results.RData')
 ```
 
@@ -147,6 +151,8 @@ LDA_1Post = posterior(LDA_1)
 d3heatmap::d3heatmap(LDA_1Post$topics, Rowv = NA, Colv = NA, colors=viridis::inferno(n=100))
 # d3heatmap::d3heatmap(LDA_2Post$topics, Rowv = NA, Colv = NA, colors=viridis::inferno(n=100))
 
+
+
 round(
   rbind(true_topics_first_half  = thetaList[[1]], 
         true_topics_second_half = thetaList[[2]],
@@ -158,8 +164,43 @@ round(
 # shinyJSON = createJSON(phi=exp(LDA_1@beta), theta=LDA_1@gamma, doc.length = WordsPerDoc, 
 #                        vocab = paste0('word',1:40), term.frequency = colSums(ldadat_1))
 # serVis(shinyJSON)
-
 ```
+
+```{r tidytext_example}
+library(tidytext)
+lda_dat_df = ldadat_1 %>%
+  as_data_frame() %>% 
+  mutate(doc=1:n()) %>% 
+  gather(key=term, value=count, -doc) %>% 
+  filter(count>0) %>% 
+  arrange(doc)
+dtm = lda_dat_df %>%
+  cast_dtm(doc, term, count, weighting = tm::weightTf)
+
+dtm
+
+tidy(LDA_1) %>% 
+  mutate_at(vars(beta), round, digits=2)
+top_terms = tidy(LDA_1) %>% 
+  group_by(topic) %>%  
+  top_n(10, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+top_terms %>%
+  mutate(term = reorder(term, beta)) %>%
+  ggplot(aes(term, beta)) +
+  geom_point(stat = "identity", size=3) +
+  geom_segment(aes(x=term, xend=term, y=0, yend=beta)) +
+  facet_wrap(~ topic, scales = "free") +
+  theme(axis.text.x = element_text(size = 10, angle = 90, vjust = .5, hjust=0)) + 
+  lazerhawk::theme_trueMinimal()
+
+chapters_lda_gamma <- tidy(chapters_lda, matrix = "gamma")
+chapters_lda_gamma
+```
+
+
 
 Let's look the the terms.  We saw that the topics 1, 2, and 3 from the LDA are affiliated with our B, A, and C respectively (referred to as B-1, A-2, and C-3 from here on). Topic C-3 should be seen with later words, and A-2 with earlier, and this is born out fairly clearly. Topic B was our notably less frequent topic with a smaller vocabulary.
 

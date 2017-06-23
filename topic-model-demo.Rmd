@@ -16,19 +16,30 @@ knitr::opts_chunk$set(message=F, error=F, warning=F, comment=NA, R.options=list(
 
 # Introduction
 
-This is a quick demonstration of a standard LDA for topic modeling for those that want to dig a little deeper than merely getting a result from a package command. As the readme for this repo notes, I did this once and then tried to return to it a couple years later, so I'm not sure how clear it will come off. But the basic idea is to first simulate some documents, and then use the <span class="pack">topicmodels</span> package to recover the topics via latent dirichlet allocation.  You can find a basic overview of topic models in a variety of places, and I'll eventually have a chapter in my [graphical and latent variable models document](http://m-clark.github.io/docs/sem). 
+This is a quick demonstration of a standard [latent dirichlet allocation](https://en.wikipedia.org/wiki/Latent_Dirichlet_allocation) (LDA) for topic modeling for those that want to dig a little deeper than merely getting a result from a package command. As the readme for this repo notes, I did this at one time and then tried to return to it a couple years later, so I'm not sure how clear it will come off. But the basic idea is to first simulate some documents, and then use the <span class="pack">topicmodels</span> package to recover the topics via LDA.  You can find a basic overview of topic models in a variety of places, and I'll eventually have a chapter in my [graphical and latent variable models document](http://m-clark.github.io/docs/sem). 
 
-Suffice it to say one can approach this in (at least) one of two ways. In one sense, LDA is a dimension reduction technique, much like the family of techniques that includes PCA, factor analysis, non-negative matrix factorization etc.  We'll take a whole lot of terms, loosely defined, and boil them down to a few topics.  Another way to think about this is more from the measurement model perspective of factor analysis, where we are keenly interested in interpretation of the result, and want to know both what terms are associated with which topics, and what documents are more likely to present which topics.
+Suffice it to say one can approach this in (at least) one of two ways. In one sense, LDA is a dimension reduction technique, much like the family of techniques that includes PCA, factor analysis, non-negative matrix factorization etc.  We'll take a whole lot of terms, loosely defined, and boil them down to a few topics.   In this sense LDA is akin to discrete PCA.  Another way to think about this is more from the  perspective of factor analysis, where we are keenly interested in interpretation of the result, and want to know both what terms are associated with which topics, and what documents are more likely to present which topics.  The following is the plate diagram and description for standard LDA from Wikipedia, which follows the typical depiction in Blei's and other references.
+
+<img src="LDA2.png" style="display:block; margin: 0 auto;" width=30%>
+
+- $\alpha$ is the parameter of the Dirichlet prior on the per-document topic distributions
+- $\beta$  is the parameter of the Dirichlet prior on the per-topic word distribution
+- $\theta_m$ is the topic distribution for document $m$
+- $\varphi_k$ is the word distribution for topic $k$
+- $z_{mn}$ is the topic for the $n$-th word in document $m$
+- $w_{mn}$ is the specific word
 
 
 
 # Generating Documents
 
-We start by generating what eventually will be a document-term matrix.  Rows represent documents, columns terms.  Terms are usually words but could be any n-gram of interest.
+We start by generating what eventually will be a document-term matrix.  Rows represent documents, columns terms.  Terms are usually words but could be any n-gram of interest.  In practice, this is where you'll spend most of your time, as text is never ready, and must be scraped, converted, stemmed, cleaned etc.  In what follows we'll be generating the text based on the underlying topic model. We'll essentially be fixing the priors to create $\theta$ and $\varphi$ noted above, then given those, draw topics and words given topics based on the multinomial distribution.
 
 ## Topic Probabilities
 
 We begin the simulation by creating topic probabilities $\theta$. There will be $k=3$ topics. Half of our documents will have probabilities of topics for them ($\theta_1$) which will be notably different from the other half ($\theta_2$).   Specifically, the first half will show higher probability of topic 'A' and 'B', while the second half of documents show higher probability of topic 'C'.
+
+
 
 ```{r topic_probabilities}
 library(tidyverse)
@@ -37,7 +48,7 @@ library(tidyverse)
 Ndocs = 500                                        # Number of documents
 WordsPerDoc = rpois(Ndocs, 100)                    # Avg. number of total words/terms in a document
 thetaList = list(c(A=.60, B=.25, C=.15),           # Topic proportions for first and second half of data 
-                 c(A=.10, B=.10, C=.80))
+                 c(A=.10, B=.10, C=.80))           # These values represent a Dir(alpha) draw
 theta_1 = t(replicate(Ndocs/2, thetaList[[1]]))
 theta_2 = t(replicate(Ndocs/2, thetaList[[2]]))
 theta = rbind(theta_1, theta_2)                    # Topic probabilities for all 500 docs
@@ -47,7 +58,7 @@ theta = rbind(theta_1, theta_2)                    # Topic probabilities for all
 
 With topic probabilites in hand, we'll draw topic assignments from a categorical distribution (see the commented line at the end), which is the multinomial with `size=1`. 
 
-```{r, topic_assign}
+```{r topic_assign}
 firsthalf = 1:(Ndocs/2)
 secondhalf = (Ndocs/2+1):Ndocs
 
@@ -62,31 +73,32 @@ z = apply(Z, 1, function(row) which(row==1))                          # topic as
 
 ## Topics
 
-Next we need the topics themselves. Topics are probability distributions of terms. In what follows we'll use the dirichlet distribution provide the prior probabilities of topics for each term. With topic A, we'll make the first ~40% of terms have a higher probability of occurring, the last ~40% go with topic C, and the middle more associated with topic B. To give a sense of the alpha settings, `alpha=c(8,1,1)` would result in topic probabilities of .8, .1, .1, as would `alpha=c(80,10,10)`, though the latter would serve as a much stronger prior. We'll use the <span class="pack">gtools</span> package for the <span class="func">rdirichlet</span> function.
+Next we need the topics themselves. Topics are probability distributions of terms. In what follows we'll use the dirichlet distribution provide the prior probabilities of topics for each term. With topic A, we'll make the first ~40% of terms have a higher probability of occurring, the last ~40% go with topic C, and the middle more associated with topic B. To give a sense of the alpha settings, `alpha=c(8,1,1)` would result in topic probabilities of .8, .1, .1, as would `alpha=c(80,10,10)`, though the latter would serve as a much stronger prior. We'll use the <span class="pack">gtools</span> package for the <span class="func">rdirichlet</span> function. I also provide a visualization, where the dark represents terms that are notably less likely to be associated with a particular topic.
 
-```{r}
+```{r topic_dist, echo=-11}
 library(gtools)
 Nterms = max(WordsPerDoc)
 breaks = quantile(1:Nterms, c(.4,.6,1)) %>% round()
 cuts = list(1:breaks[1], (breaks[1]+1):breaks[2], (breaks[2]+1):Nterms)
 
-B_k = matrix(0, ncol=3, nrow=Nterms)
-B_k[,1] = rdirichlet(n=1, alpha=c(rep(10, length(cuts[[1]])),      # topics for 1st 40% of terms
-                                  rep(1, length(cuts[[2]])),
-                                  rep(1, length(cuts[[3]]))))
-B_k[,2] = rdirichlet(n=1, alpha=c(rep(1, length(cuts[[1]])),       # topics for middle 20%
-                                  rep(10, length(cuts[[2]])),
-                                  rep(1, length(cuts[[3]]))))
-B_k[,3] = rdirichlet(n=1, alpha=c(rep(1, length(cuts[[1]])),       # topics for last 40% of terms
-                                  rep(1, length(cuts[[2]])),
-                                  rep(10, length(cuts[[3]]))))
-B_k %>% d3heatmap::d3heatmap(Rowv=F, Colv=F, colors=viridis::inferno(n=300))
+phi_k = matrix(0, ncol=3, nrow=Nterms)
+
+phi_k[,1] = rdirichlet(n=1, alpha=c(rep(10, length(cuts[[1]])),      # topics for 1st 40% of terms
+                                    rep(1,  length(cuts[[2]])),
+                                    rep(1,  length(cuts[[3]]))))
+phi_k[,2] = rdirichlet(n=1, alpha=c(rep(1,  length(cuts[[1]])),       # topics for middle 20%
+                                    rep(10, length(cuts[[2]])),
+                                    rep(1,  length(cuts[[3]]))))
+phi_k[,3] = rdirichlet(n=1, alpha=c(rep(1,  length(cuts[[1]])),       # topics for last 40%
+                                    rep(1,  length(cuts[[2]])),
+                                    rep(10, length(cuts[[3]]))))
+phi_k %>% d3heatmap::d3heatmap(Rowv=F, Colv=F, colors=viridis::inferno(n=300))
 ```
 
 Now, given the topic assignment, we draw words for each document according to its size via a multinomial draw.
 
-```{r}
-wordlist_1 = sapply(1:Ndocs, function(i) t(rmultinom(1, WordsPerDoc[i], B_k[,z[i]]))  
+```{r generate_words}
+wordlist_1 = sapply(1:Ndocs, function(i) t(rmultinom(1, WordsPerDoc[i], phi_k[,z[i]]))  
                     , simplify = F)  
 
 # smash to doc-term matrix
@@ -94,64 +106,60 @@ ldadat_1 = do.call(rbind, wordlist_1)
 colnames(ldadat_1) = paste0('word', 1:Nterms)
 
 # bag of words representation
-wordlist_1 = lapply(wordlist_1, function(wds) rep(paste0('word',1:length(wds)), wds))   
+wordlist_1 = lapply(wordlist_1, function(wds) rep(paste0('word', 1:length(wds)), wds))   
 # table(wordlist_1[[1]])  # example document 1
 ```
 
 
-With a matrix approach, we don't need an explicit topic label, just the topic indictator matrix and topic probabilities. Later on I provide some code that will let you see this for yourself that the results are similar, but we'll just stick to one result to keep things clear.
+With a matrix approach, we don't need an explicit topic label, just the topic indictator matrix and topic probabilities. I will let you see this for yourself that the results are similar, but we'll just stick to the previous results to keep things clear.
 
-```{r}
-ZB = tcrossprod(Z, B_k)                                                
+```{r topic_matrix}
+ZB = tcrossprod(Z, phi_k)                                                
 ldadat_2 = t(sapply(1:Ndocs, function(i) rmultinom(1, WordsPerDoc[i], ZB[i,])))
 wordlist_2 = apply(ldadat_2, 1, function(row) rep(paste0('word', which(row!=0)), row[row!=0]) )
 
 colnames(ldadat_2) = paste0('word', 1:Nterms)
 ```
 
-Just out of curiosity, we can see how these two random instances of topics and words line up.
+<!-- Just out of curiosity, we can see how these two random instances of topics and words line up. -->
 
-```{r, eval=FALSE}
-# overlap of words
-nWordOverlap = rep(NA, Ndocs)
-percWordOverlap = rep(NA, Ndocs)
-for (i in 1:Ndocs){
-  nWordOverlap[i]    = length(intersect(wordlist_1[[i]], wordlist_2[[i]]))
-  percWordOverlap[i] = length(intersect(wordlist_1[[i]], wordlist_2[[i]])) /
-                       length(unique(c(wordlist_1[[i]],  wordlist_2[[i]])))
-}
-summary(nWordOverlap)
-summary(percWordOverlap)
-```
+<!-- ```{r, eval=FALSE} -->
+<!-- # overlap of words -->
+<!-- nWordOverlap = rep(NA, Ndocs) -->
+<!-- percWordOverlap = rep(NA, Ndocs) -->
+<!-- for (i in 1:Ndocs){ -->
+<!--   nWordOverlap[i]    = length(intersect(wordlist_1[[i]], wordlist_2[[i]])) -->
+<!--   percWordOverlap[i] = length(intersect(wordlist_1[[i]], wordlist_2[[i]])) / -->
+<!--                        length(unique(c(wordlist_1[[i]],  wordlist_2[[i]]))) -->
+<!-- } -->
+<!-- summary(nWordOverlap) -->
+<!-- summary(percWordOverlap) -->
+<!-- ``` -->
 
 
 # Topic Models
 
 We're now ready to run the models.   Depending on the number of documents, terms, and other settings, it is possible to get an unsatisfactory/random result. Usually a redo is enough to recover topic probabilities, but the commented settings are an attempt to get better result from the outset.  However, they will notably slow things down.
 
-```{r, eval=F}
+```{r run_lda, eval=F, echo=1:4}
 library(topicmodels)
-controlSettings = list(nstart=10, verbose=100)
+controlSettings = list(nstart=10, verbose=100, seed=1234)
 # others var=list(iter.max=5000, tol=10e-8), em=list(iter.max=5000, tol=10e-8)
 LDA_1 = LDA(ldadat_1, k=3, control=controlSettings)
+# LDA_1 = LDA(ldadat_1, k=3, method='Gibbs')
+
 # LDA_2 = LDA(ldadat_2, k=3, control=controlSettings)
 
-
-
-save(LDA_1, LDA_2, file='lda_results.RData')
+save(LDA_1, file='lda_results.RData')
 ```
 
-Let's look at the results. To be clear, the topic labels are *completely arbitrary*, so what is topic "1" for one analysis might be topic "3" for another. The main thing is the recovery of the distribution of the topics, which will be roughly `r theta_1[1,]` for the first half (arbitrary order), and `r theta_2[1,]` for the other. 
+Let's look at the results. To be clear, the topic labels are *completely arbitrary*, so what is topic "1" for one analysis might be topic "3" for another. In this case, they align such that A-1, B-2, and C-3. The main thing for us is the recovery of the distribution of the topics, which will be roughly `r theta_1[1,]` for the first half (arbitrary order), and `r theta_2[1,]` for the other. Visually we can see the expected result, the first half of the documents are mostly associated with the first topic, and a little more so for the second. The last half are mostly associated with the third topic and little else.
 
-```{r echo=-(1:2)}
+```{r lda_results, echo=c(2:3, 5:6)}
 load('lda_results.RData')
 library(topicmodels)
 LDA_1Post = posterior(LDA_1)
-# LDA_2Post = posterior(LDA_2)
 d3heatmap::d3heatmap(LDA_1Post$topics, Rowv = NA, Colv = NA, colors=viridis::inferno(n=100))
-# d3heatmap::d3heatmap(LDA_2Post$topics, Rowv = NA, Colv = NA, colors=viridis::inferno(n=100))
-
-
 
 round(
   rbind(true_topics_first_half  = thetaList[[1]], 
@@ -160,11 +168,19 @@ round(
         LDA_1_second_half = colMeans(LDA_1Post$topics[secondhalf,]))
   , 2)
 
+# LDA_2Post = posterior(LDA_2)
+# d3heatmap::d3heatmap(LDA_2Post$topics, Rowv = NA, Colv = NA, colors=viridis::inferno(n=100))
 # library(LDAvis)
-# shinyJSON = createJSON(phi=exp(LDA_1@beta), theta=LDA_1@gamma, doc.length = WordsPerDoc, 
-#                        vocab = paste0('word',1:40), term.frequency = colSums(ldadat_1))
+# shinyJSON = createJSON(phi=exp(LDA_1@beta), theta=LDA_1@gamma, doc.length = WordsPerDoc,
+#                        vocab = paste0('word', 1:Nterms), term.frequency = colSums(ldadat_1))
 # serVis(shinyJSON)
 ```
+
+
+
+## tidytext
+
+The <span class="pack">tidytext</span> package can facilitate working with LDA results, as well as doing all the text pre-processing beforehand. As it is relatively new to the scene, and I thought it might be useful to demonstrate some of how it works.  The first step would assume your initial data is in 'tidy' format (or what is more typically called 'long' form). In this case, each row represents words and we have a column for how many times the word occurs, and the document id. Note that I drop 0 counts.  This is because tidytext will not create at sparse dtm otherwise.
 
 ```{r tidytext_example}
 library(tidytext)
@@ -172,15 +188,28 @@ lda_dat_df = ldadat_1 %>%
   as_data_frame() %>% 
   mutate(doc=1:n()) %>% 
   gather(key=term, value=count, -doc) %>% 
-  filter(count>0) %>% 
+  filter(count>0) %>%
   arrange(doc)
+
+lda_dat_df
+```
+
+Again, <span class="pack">tidytext</span> will help you get to that state via the initial processing. Once there, you can then create the document term matrix with <span class="func">cast_dtm</span>.
+
+```{r tt_dtm}
 dtm = lda_dat_df %>%
-  cast_dtm(doc, term, count, weighting = tm::weightTf)
+  cast_dtm(doc, term, count)
 
 dtm
+```
 
-tidy(LDA_1) %>% 
-  mutate_at(vars(beta), round, digits=2)
+Once you have the topic model results, you can then start working with term and  topic probabilities. First we'll get the top 10 terms and graphically display them.  Recall that topic C-3 should be seen with later words, and A-1 with earlier, and this is born out fairly clearly. Topic B was our less frequent topic with a smaller vocabulary.  See also the <span class="pack">LDAvis</span> for an interactive way to examine topic and term relationships.
+
+```{r terms}
+terms(LDA_1, 10)
+```
+
+```{r tt_ldapost}
 top_terms = tidy(LDA_1) %>% 
   group_by(topic) %>%  
   top_n(10, beta) %>%
@@ -190,29 +219,48 @@ top_terms = tidy(LDA_1) %>%
 top_terms %>%
   mutate(term = reorder(term, beta)) %>%
   ggplot(aes(term, beta)) +
-  geom_point(stat = "identity", size=3) +
-  geom_segment(aes(x=term, xend=term, y=0, yend=beta)) +
+  geom_point(stat = "identity", size=4, color='#ff5500') +
+  geom_segment(aes(x=term, xend=term, y=0, yend=beta), size=1, color='#ff5500') +
   facet_wrap(~ topic, scales = "free") +
+  labs(y='Probability of occurrence') +
   theme(axis.text.x = element_text(size = 10, angle = 90, vjust = .5, hjust=0)) + 
   lazerhawk::theme_trueMinimal()
+```
 
-chapters_lda_gamma <- tidy(chapters_lda, matrix = "gamma")
-chapters_lda_gamma
+We can get at the topic probabilties as follows. For this demonstration, probabilities are essentially 1 or 0, something you may not find in practice.
+
+```{r topic_posterior}
+dt_probs <- tidy(LDA_1, matrix = "gamma")
+
+dt_probs %>% 
+  group_by(document, topic) %>% 
+  summarise(meanProb=mean(gamma))
 ```
 
 
-
-Let's look the the terms.  We saw that the topics 1, 2, and 3 from the LDA are affiliated with our B, A, and C respectively (referred to as B-1, A-2, and C-3 from here on). Topic C-3 should be seen with later words, and A-2 with earlier, and this is born out fairly clearly. Topic B was our notably less frequent topic with a smaller vocabulary.
-
-```{r}
-terms(LDA_1, 10)
-```
-
-A rough breakdown of topic probabilities is $.6*Ndocs/2 + .1*Ndocs/2 =$ `r (.6*Ndocs/2 + .1*Ndocs/2)/Ndocs` for A-2, $.25*Ndocs/2 + .1*Ndocs/2 =$ `r (.25*Ndocs/2 + .1*Ndocs/2)/Ndocs` for B-1, and $.8*Ndocs/2 + .15*Ndocs/2 =$ `r (.8*Ndocs/2 + .15*Ndocs/2)/Ndocs` for C-3. We can use the <span class="func">topics</span> function to extract the most likely topic per document and get the frequency of occurence.
+A rough breakdown of expected topic probabilities across all documents is $.6*Ndocs/2 + .1*Ndocs/2 =$ `r (.6*Ndocs/2 + .1*Ndocs/2)/Ndocs` for topic A, $.25*Ndocs/2 + .1*Ndocs/2 =$ `r (.25*Ndocs/2 + .1*Ndocs/2)/Ndocs` for B, and $.8*Ndocs/2 + .15*Ndocs/2 =$ `r (.8*Ndocs/2 + .15*Ndocs/2)/Ndocs` for C. We can use the <span class="func">topics</span> function to extract the most likely topic per document and get the frequency of occurence. Note that we don't have to say that each document is only associated with one topic in general.
 
 
-```{r}
+```{r topic_overall_probabilities}
 prop.table(table(topics(LDA_1)))
+
+# dplyr is notably more verbose here, but can be used also
+dt_probs %>%
+  group_by(document) %>%
+  summarise (topic = which.max(gamma)) %>%
+  group_by(topic) %>% 
+  summarise(n = n()) %>% 
+  mutate(freq = n / sum(n))
 ```
 
 Looks like we're right where we'd expect.
+
+# Summary
+
+This document conceptually demonstrates the mechanics of LDA's data generating process.  I suggest you go back and fiddle with the settings to see how things change.  Note that just about everything you'll come across with LDA will regard topic modeling, but one of its earliest uses was actually in genetics.  Any time you have a matrix of counts like this, LDA is a potential candidate for analysis, and might be preferable to PCA.
+
+
+# References
+
+- Blei D.M., Ng A.Y., Jordan M.I. (2003). [Latent Dirichlet Allocation](http://jmlr.csail.mit.edu/papers/v3/blei03a.html). Journal of Machine Learning Research, 3, 993-1022. 
+- Mimno's list of LDA references https://mimno.infosci.cornell.edu/topics.html

@@ -18,10 +18,11 @@ knitr::opts_chunk$set(message=F, error=F, warning=F, comment=NA, R.options=list(
 ```{r setup_heat, echo=FALSE}
 library(htmltools)
 tags$style(".d3heatmap { margin-left: auto; margin-right: auto; }")
+tags$style(".plotly { margin-left: auto; margin-right: auto; width=75%}")
 ```
 
 ```{r setup_other, echo=FALSE}
-library(pander)
+library(pander) # note, something about the recent dplyr change has broken pander for tibbles (along with many other things)
 ```
 
 # Introduction
@@ -115,11 +116,17 @@ phi_k[,3] = rdirichlet(n=1, alpha=c(rep(1,  length(cuts[[1]])),       # topics f
 ```
 
 ```{r display_phi, echo=FALSE}
-d3heatmap::d3heatmap(phi_k, Rowv = NA, Colv = NA, labRow=rep(NA, Nterms), 
-                     colors=viridis::inferno(n=100),
-                     width=500)
+# d3heatmap::d3heatmap(phi_k, Rowv = NA, Colv = NA, labRow=rep(NA, Nterms), 
+#                      colors=viridis::inferno(n=100),
+#                      width=500, show_grid=F)
+library(heatmaply)
+
+heatmaply(phi_k, Colv=NA, Rowv=NA, colors=viridis::inferno(100), 
+          showticklabels=F, symm=F, hide_colorbar=T, plot_method='ggplot', 
+          fontsize_row=0, fontsize_col=0)
 ```
 
+<br>
 
 Now, given the topic assignment, we draw words for each document according to its size via a multinomial draw.
 
@@ -148,8 +155,8 @@ And here's what the first document looks like.
 
 ```{r bow_pretty, echo=FALSE}
 table(wordlist_1[[1]]) %>% 
-  as_data_frame() %>% 
-  arrange(desc(n)) %>% 
+  data.frame() %>% 
+  arrange(desc(Freq)) %>% 
   rename(Term=Var1) %>% 
   head(8) %>% 
   pander()
@@ -208,16 +215,26 @@ LDA_1Post = posterior(LDA_1)
 
 # with this data of near 0s and near 1s, d3heatmap is basically doing a 2 color 
 # plot regardless of input, but color issues with this function are par for the 
-# course. The helpfile should really be changed to note that it uses the
-# following unless it's input is a factor (col_factor), which is not even noted as an
-# allowable input.
+# course. The helpfile should really be changed to note that it uses the 
+# following unless it's input is a factor (col_factor), which is not even noted
+# as an allowable input. UPDATE: d3heatmap is now abandonware. However, colorRamp
+# can't be used (apparently) so keeping this particular plot.
 
 #   colors = scales::col_numeric(colors, rng, na.color = "transparent")
 
 
 d3heatmap::d3heatmap(LDA_1Post$topics, Rowv = NA, Colv = NA, labRow=rep(NA, nrow(LDA_1Post$topics)),
-                     colors=colorRamp(viridis::inferno(n=100), interpolate='spline', space='Lab', bias=), digits=5,
+                     colors=colorRamp(viridis::inferno(n=100), interpolate='spline', space='Lab', bias=5), digits=5,
                      width=500)
+
+# test = LDA_1Post$topics
+# test[test<.5] = sqrt(test[test<.5])
+# test[test>.5] = (test[test>.5])^2
+# heatmaply(test, Rowv = NA, Colv = NA, #labRow=rep(NA, nrow(LDA_1Post$topics)),
+#           colors=viridis::inferno(n=500), scale='none',
+#           showticklabels=F, symm=F, hide_colorbar=T, #plot_method='ggplot', 
+#           fontsize_row=0, fontsize_col=0, 
+#           width=500)
 
 
 # LDA_2Post = posterior(LDA_2)
@@ -240,8 +257,51 @@ rbind(true_topic_probs_first_half  = thetaList[[1]],
   arm::fround(2) %>% 
   pander(justify='lrrr', width=250)
 ```
+<br>
+
+As another approach to looking at how the documents relate to one another, I calculated their KL divergence based on the estimated topic probabilities, and show the  (lower triangle) of the resulting distance matrix of documents.  Darker indicates documents that are less alike, and we see the later documents are less like the earliest ones, as we would expect.
 
 
+
+```{r kldiv, echo=FALSE, eval=FALSE}
+divKLJS = function(input, method='KL'){
+  docpairs = combn(1:nrow(input), 2)
+  if(method=='KL'){
+    apply(docpairs, 2, 
+          function(topicprob) .5*sum(topicprob[1]*log2(topicprob[1]/topicprob[2]) 
+                                     + topicprob[2]*log2(topicprob[2]/topicprob[1])
+          )
+    )
+  } else{
+    apply(docpairs, 2, 
+          function(topicprob) .5*sum(topicprob[1]*log2(topicprob[1]/mean(topicprob)) 
+                                     + topicprob[2]*log2(topicprob[2]/mean(topicprob))
+          )
+    )
+  }
+}
+
+
+# Now do for all
+KLdivs = divKLJS(LDA_1Post$topics)
+mat0 = matrix(NA, Ndocs, Ndocs)
+mat0[lower.tri(mat0)] <- KLdivs
+mat0[upper.tri(mat0)] <- t(mat0)[upper.tri(t(mat0))]
+KLdivs = mat0; dimnames(KLdivs) = list(row.names(dtm))
+# corrplot(KLdivs, diag=T, type='lower', is.corr=F, main='Kullback-Liebler Divergence')
+# d3heatmap::d3heatmap(mat0, Colv=F, Rowv=F, colors=viridis::inferno(500, direction=-1), 
+#                      labCol=rep('', 500), labRow=rep('', 500), show_grid=F, 
+#                      xaxis_height=0, xaxis_font_size=0,
+#                      yaxis_height=0, yaxis_font_size=0)
+heatmaply(mat0, Colv=NA, Rowv=NA, colors=viridis::inferno(500, direction=-1), 
+          showticklabels=F, symm=F, hide_colorbar=T, plot_method='ggplot', 
+          fontsize_row=0, fontsize_col=0)
+```
+
+
+
+
+<img src="kl_div_docs.png" style="display:block; margin: 0 auto;">
 
 ## tidytext
 
@@ -267,12 +327,12 @@ lda_dat_df = dtm_1 %>%
   filter(count>0) %>%
   arrange(doc)
 
-lda_dat_df %>% head(10) %>% pander()
+lda_dat_df %>% head(10) %>% data.frame() %>% pander()
 ```
 <br>
 Again, <span class="pack">tidytext</span> will help you get to that state via the initial processing. Once there, you can then create the document term matrix with <span class="func">cast_dtm</span>.
 
-```{r tt_dtm}
+```{r tt_dtm, eval=FALSE}
 dtm = lda_dat_df %>%
   cast_dtm(doc, term, count)
 
@@ -338,9 +398,10 @@ doctop_probs = tidy(LDA_1, matrix = "gamma")
 doctop_probs %>% 
   group_by(document, topic) %>% 
   summarise(meanProb=mean(gamma)) %>% 
-  head %>% 
+  head %>% data.frame() %>% 
   pander()
 ```
+
 
 
 <br>
@@ -365,6 +426,7 @@ doctop_probs %>%
   group_by(topic) %>% 
   summarise(n = n()) %>% 
   mutate(freq = n / sum(n)) %>% 
+  data.frame() %>%
   pander()
 ```
 
@@ -375,7 +437,7 @@ Looks like we're right where we'd expect.
 
 This document conceptually demonstrates the mechanics of LDA's data generating process.  I suggest you go back and fiddle with the settings to see how things change.  For example, one could use an actual Dirichlet draw for theta, and a more loose setting for the term-topic affiliation for a more nuanced result. 
 
-Note that just about everything you'll come across with LDA will regard topic modeling, but it is by no means restricted to the analysis of text.  In fact, one of its earliest uses was actually in genetics.  Any time you have a matrix of counts like this, LDA is a potential candidate for analysis, and might be preferable to PCA or factor analysis.  
+Note that just about everything you'll come across with LDA will regard topic modeling, but it is by no means restricted to the analysis of text.  In fact, one of its earliest uses was actually in genetics.  Any time you have a matrix of counts like this, LDA is a potential candidate for analysis, and might be preferable to PCA or factor analysis. 
 
 
 ```{r pcafa_comparison, echo=FALSE, eval=FALSE}
@@ -386,8 +448,9 @@ d3heatmap(fares$scores, Rowv=F, Colv=F)
 d3heatmap(pcares$scores, Rowv=F, Colv=F)
 ```
 
-
 # References
 
 - Blei D.M., Ng A.Y., Jordan M.I. (2003). [Latent Dirichlet Allocation](http://jmlr.csail.mit.edu/papers/v3/blei03a.html). Journal of Machine Learning Research, 3, 993-1022. 
 - Mimno's list of LDA references https://mimno.infosci.cornell.edu/topics.html
+- Steyvers, M., & Griffiths, T. (2007). [Probabilistic topic models](http://psiexp.ss.uci.edu/research/papers/SteyversGriffithsLSABookFormatted.pdf).
+- [R example](https://github.com/m-clark/Miscellaneous-R-Code/blob/master/ModelFitting/Bayesian/topicModelgibbs.R) of Gibbs sampling estimation for topic models.

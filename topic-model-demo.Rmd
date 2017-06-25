@@ -122,7 +122,7 @@ phi_k[,3] = rdirichlet(n=1, alpha=c(rep(1,  length(cuts[[1]])),       # topics f
 library(heatmaply)
 
 heatmaply(phi_k, Colv=NA, Rowv=NA, colors=viridis::inferno(100), 
-          showticklabels=F, symm=F, hide_colorbar=T, plot_method='ggplot', 
+          showticklabels=F, symm=F, hide_colorbar=T, plot_method='plotly', 
           fontsize_row=0, fontsize_col=0)
 ```
 
@@ -282,7 +282,7 @@ divKLJS = function(input, method='KL'){
 }
 
 
-# Now do for all
+# Now do for all☻
 KLdivs = divKLJS(LDA_1Post$topics)
 mat0 = matrix(NA, Ndocs, Ndocs)
 mat0[lower.tri(mat0)] <- KLdivs
@@ -294,7 +294,7 @@ KLdivs = mat0; dimnames(KLdivs) = list(row.names(dtm))
 #                      xaxis_height=0, xaxis_font_size=0,
 #                      yaxis_height=0, yaxis_font_size=0)
 heatmaply(mat0, Colv=NA, Rowv=NA, colors=viridis::inferno(500, direction=-1), 
-          showticklabels=F, symm=F, hide_colorbar=T, plot_method='ggplot', 
+          showticklabels=F, symm=F, hide_colorbar=T, plot_method='plotly', 
           fontsize_row=0, fontsize_col=0)
 ```
 

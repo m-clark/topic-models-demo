@@ -5,9 +5,9 @@ output:
   html_document: 
     css: standard_html.css
     highlight: pygments
-    toc: true
-    toc_float: true
-# font-import: http://fonts.googleapis.com/css?family=Roboto|Open+Sans
+    toc: yes
+    toc_float: yes
+# font-import: http://fonts.googleapis.com/css?family=Roboto|Open+Sans|Roboto+Mono
 font-family: 'Roboto'
 ---
 
@@ -27,9 +27,10 @@ library(pander) # note, something about the recent dplyr change has broken pande
 
 # Introduction
 
+
 This is a brief demonstration of a standard [latent dirichlet allocation](https://en.wikipedia.org/wiki/Latent_Dirichlet_allocation) (LDA) for <span class="emph">topic modeling</span>, geared toward those who want to dig a little deeper than merely getting a result from a package command. The basic idea is to first generate some documents based on the underlying model, and then we'll use the <span class="pack">topicmodels</span> package to recover the topics via LDA.  You can find a basic overview of topic models in a variety of places, and I'll eventually have a chapter in my [graphical and latent variable models document](http://m-clark.github.io/docs/sem). 
 
-Suffice it to say one can approach this in (at least) one of two ways. In one sense, LDA is a dimension reduction technique, much like the family of techniques that includes PCA, factor analysis, non-negative matrix factorization etc.  We'll take a whole lot of terms, loosely defined, and boil them down to a few topics.   In this sense LDA is akin to discrete PCA.  Another way to think about this is more from the  perspective of factor analysis, where we are keenly interested in interpretation of the result, and want to know both what terms are associated with which topics, and what documents are more likely to present which topics.  The following is the plate diagram and description for standard LDA from Wikipedia, which follows the typical depiction in Blei's and other references.
+Suffice it to say, one can approach this in (at least) one of two ways. In one sense, LDA is a dimension reduction technique, much like the family of techniques that includes PCA, factor analysis, non-negative matrix factorization etc.  We'll take a whole lot of terms, loosely defined, and boil them down to a few topics.   In this sense LDA is akin to discrete PCA.  Another way to think about this is more from the  perspective of factor analysis, where we are keenly interested in interpretation of the result, and want to know both what terms are associated with which topics, and what documents are more likely to present which topics.  The following is the plate diagram and description for standard LDA from Wikipedia, which follows the typical depiction in Blei's and other references.
 
 <img src="LDA2.png" style="display:block; margin: 0 auto;" width=30%>
 
@@ -44,7 +45,7 @@ Both $z$ and $w$ are from a multinomial draw based on the $\theta$ and $\varphi$
 
 # Generating Documents
 
-In the standard setting, to be able to conduct such an analysis from text one needs a <span class="emph">document-term matrix</span>, where rows represent documents, and columns terms.  Terms are typically words but could be any n-gram of interest.  In practice, this is where you'll spend most of your time, as text is never ready, and must be scraped, converted, stemmed, cleaned etc.  In what follows we'll be generating the text based on the underlying topic model. We'll essentially be fixing the priors to create $\theta$ and $\varphi$ noted above, then given those, draw topics and words given topics based on the multinomial distribution.
+In the standard setting, to be able to conduct such an analysis from text one needs a <span class="emph">document-term matrix</span>, where rows represent documents, and columns terms.  Terms are typically words but could be any <span class="emph">n-gram</span> of interest.  In practice, this is where you'll spend most of your time, as text is never ready, and must be scraped, converted, stemmed, cleaned etc.  In what follows we'll be generating the text based on the underlying topic model. We'll initially create $\theta$ and $\varphi$ noted above, then given those, draw topics and words given topics based on the multinomial distribution.  I've tried to keep the code general enough to make it easy to play with the parameter settings.
 
 
 ## Topic Probabilities
@@ -115,16 +116,18 @@ phi_k[,3] = rdirichlet(n=1, alpha=c(rep(1,  length(cuts[[1]])),       # topics f
                                     rep(10, length(cuts[[3]]))))
 ```
 
-```{r display_phi, echo=FALSE}
+```{r display_phi, echo=FALSE, eval=FALSE}
 # d3heatmap::d3heatmap(phi_k, Rowv = NA, Colv = NA, labRow=rep(NA, Nterms), 
 #                      colors=viridis::inferno(n=100),
 #                      width=500, show_grid=F)
 library(heatmaply)
 
-heatmaply(phi_k, Colv=NA, Rowv=NA, colors=viridis::inferno(100), 
-          showticklabels=F, symm=F, hide_colorbar=T, plot_method='plotly', 
+heatmaply(phi_k, Colv=NA, Rowv=NA, colors=viridis::inferno(100),
+          showticklabels=F, symm=F, hide_colorbar=T, plot_method='plotly',
           fontsize_row=0, fontsize_col=0)
 ```
+
+<img src="phi.png" style="display:block; margin: 0 auto;">
 
 <br>
 
@@ -225,7 +228,7 @@ LDA_1Post = posterior(LDA_1)
 
 d3heatmap::d3heatmap(LDA_1Post$topics, Rowv = NA, Colv = NA, labRow=rep(NA, nrow(LDA_1Post$topics)),
                      colors=colorRamp(viridis::inferno(n=100), interpolate='spline', space='Lab', bias=5), digits=5,
-                     width=500)
+                     width=450, height=368)
 
 # test = LDA_1Post$topics
 # test[test<.5] = sqrt(test[test<.5])
@@ -245,6 +248,8 @@ d3heatmap::d3heatmap(LDA_1Post$topics, Rowv = NA, Colv = NA, labRow=rep(NA, nrow
 # serVis(shinyJSON)
 ```
 
+<!-- <img src="doc_topic.png" style="display:block; margin: 0 auto;"> -->
+
 <br>
 
 We can compare our results with the true topic probabilities and see we've recovered things pretty well.
@@ -259,7 +264,7 @@ rbind(true_topic_probs_first_half  = thetaList[[1]],
 ```
 <br>
 
-As another approach to looking at how the documents relate to one another, I calculated their KL divergence based on the estimated topic probabilities, and show the  (lower triangle) of the resulting distance matrix of documents.  Darker indicates documents that are less alike, and we see the later documents are less like the earliest ones, as we would expect.
+As another approach to looking at how the documents relate to one another, I calculated their <span class="emph">KL divergence</span> based on the estimated topic probabilities, and show the  (lower triangle) of the resulting distance matrix of documents.  Darker indicates documents that are less alike, and we see the later documents are less like the earliest ones, as we would expect.
 
 
 
@@ -301,7 +306,7 @@ heatmaply(mat0, Colv=NA, Rowv=NA, colors=viridis::inferno(500, direction=-1),
 
 
 
-<img src="kl_div_docs.png" style="display:block; margin: 0 auto;">
+<img src="kl_div_docs.png" style="display:block; margin: 0 auto;" width=50%>
 
 ## tidytext
 

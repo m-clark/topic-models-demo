@@ -67,11 +67,13 @@ LDA_diffs
 ### STM
 
 library(stm)
-stm_0 = stm(docs[[3]], vocab=paste0('word',1:40), K=3)
-stm_1 = stm(docs[[3]], vocab=paste0('word',1:40), K=3, prevalence = ~treatment, data=data.frame(treatment))
+stm_0 = stm(docs[[3]], vocab=paste0('word', 1:40), K=3)
+stm_1 = stm(docs[[3]], vocab=paste0('word', 1:40), K=3, prevalence = ~treatment, 
+            data=data.frame(treatment))
 
 heatmaply(stm_0$theta, Rowv = NA, Colv = NA, colors=viridis::magma(100),
-          showticklabels=FALSE, plot_method='plotly', fontsize_row=0, fontsize_col=0)
+          showticklabels=FALSE, plot_method='plotly', 
+          fontsize_row=0, fontsize_col=0)
 
 stm_0_topic_props = data.frame(treatment=treatment, stm_0$theta) %>% 
   group_by(treatment) %>% 
@@ -90,7 +92,8 @@ stm_0_diffs
 # STM with covariate
 
 heatmaply(stm_1$theta, Rowv = NA, Colv = NA, colors=viridis::magma(100),
-          showticklabels=FALSE, plot_method='plotly', fontsize_row=0, fontsize_col=0)
+          showticklabels=FALSE, plot_method='plotly', 
+          fontsize_row=0, fontsize_col=0)
 
 stm_1_topic_props = data.frame(treatment=treatment, stm_1$theta) %>% 
   group_by(treatment) %>% 

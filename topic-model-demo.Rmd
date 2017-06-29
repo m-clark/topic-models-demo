@@ -1,6 +1,6 @@
 ---
 title: "Topic Model Demo"
-author: "Michael Clark"
+author: <span class="" style='font-variant:small-caps'>Michael Clark</span>
 output: 
   html_document: 
     css: standard_html.css

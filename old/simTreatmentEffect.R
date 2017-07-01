@@ -1,20 +1,19 @@
 ### Stm appendix to open-ended survey responses
-
 gendat = function(nt=3, nd=500, nw=40){
 #   B_k topic is a distribution over the fixed vocabulary; e.g. apple = .02, berry = .01, cat = .0001
 #   theta_d topic proportions for dth document where theta_dk is the topic prop for the kth topic in doc d
 #   z_d topic assignment for dth doc where z_dn is topic ass for nth word in doc d
 #   w_d are the observed words in doc d where w_dn is the nth word in doc d
 #   
-  # require(DirichletReg) # for vectorized rdirichlet
-  B_k = DirichletReg::rdirichlet(n=nw, alpha=rep(.05,3)) 
+  require(DirichletReg)
+  B_k = rdirichlet(n=nw, alpha=rep(.05,3)) 
   alpha0 = c(.3,.4,.3)            # topic props control
   alpha1 = c(.1,.4,.5)            # topic props treatment group +-.2 for two of the topics
   treatment = rbind(t(replicate(nd/2, alpha0)),
                     t(replicate(nd/2, alpha1)))
   Nd = rpois(nd, 40)
   G0 = 1/3
-  theta_dk = DirichletReg::rdirichlet(nd, treatment * G0)
+  theta_dk = rdirichlet(nd, treatment * G0)
   thetabeta = tcrossprod(theta_dk, B_k)
   wdList = vector('list', nd)
   for (i in 1:nrow(thetabeta))  wdList[[i]] = t(rmultinom(1, Nd[i], thetabeta[i,]))
@@ -43,78 +42,58 @@ docs = gendat(nd=ndocs)
 
 ### LDA
 library("topicmodels")
-testLDA = posterior(LDA(docs[[1]], k=3, method = 'VEM', control=list(nstart=10, verbose=100)))  
+testLDA = posterior(LDA(docs[[1]], k=3, method = 'VEM'))  
 # testLDA = posterior(LDA(docs[[1]][idx,], k=3, method = 'VEM'))  
+# heatmap(testLDA$topics, Rowv = NA, Colv = NA)
 
-library(heatmaply)
-heatmaply(testLDA$topics, Rowv = NA, Colv = NA, colors=viridis::magma(100),
-          showticklabels=FALSE, plot_method='plotly', fontsize_row=0, fontsize_col=0)
+library(plyr); library(dplyr); library(magrittr)
+ddply(data.frame(treatment=treatment, testLDA$topics), 'treatment', function(x) colMeans(x[,-1])) 
 
-library(tidyverse)
-LDA_topic_props = data.frame(treatment=treatment, testLDA$topics) %>% 
-  group_by(treatment) %>% 
-  summarise_all(mean)
-LDA_topic_props
-
-LDA_diffs = LDA_topic_props %>% 
+testLDAdiffs = ddply(data.frame(treatment=treatment, testLDA$topics), 'treatment', function(x) colMeans(x[,-1]) )  %>% 
   select(-treatment) %>%
   sapply(diff) %>%
   sort %>%
   round(3)
-LDA_diffs
 
 
 ### STM
-
 library(stm)
-stm_0 = stm(docs[[3]], vocab=paste0('word', 1:40), K=3)
-stm_1 = stm(docs[[3]], vocab=paste0('word', 1:40), K=3, prevalence = ~treatment, 
-            data=data.frame(treatment))
+teststm0 = stm(docs[[3]], vocab=paste0('word',1:40), K=3)
+teststm1 = stm(docs[[3]], vocab=paste0('word',1:40), K=3, prevalence = ~treatment, data=data.frame(treatment))
 
-heatmaply(stm_0$theta, Rowv = NA, Colv = NA, colors=viridis::magma(100),
-          showticklabels=FALSE, plot_method='plotly', 
-          fontsize_row=0, fontsize_col=0)
+# heatmap(teststm0$theta, Rowv = NA, Colv = NA)
 
-stm_0_topic_props = data.frame(treatment=treatment, stm_0$theta) %>% 
-  group_by(treatment) %>% 
-  summarise_all(mean)
+ddply(data.frame(treatment=treatment, teststm0$theta), 'treatment', function(x) colMeans(x[,-1]) )
 
-stm_0_topic_props
-
-stm_0_diffs = stm_0_topic_props %>% 
+teststm0diffs = ddply(data.frame(treatment=treatment, teststm0$theta), 'treatment', function(x) colMeans(x[,-1]) )  %>% 
   select(-treatment) %>%
   sapply(diff) %>%
   sort %>%
   round(3)
-
-stm_0_diffs
 
 # STM with covariate
+# heatmap(teststm1$theta, Rowv = NA, Colv = NA)
 
-heatmaply(stm_1$theta, Rowv = NA, Colv = NA, colors=viridis::magma(100),
-          showticklabels=FALSE, plot_method='plotly', 
-          fontsize_row=0, fontsize_col=0)
+ddply(data.frame(treatment=treatment, teststm1$theta), 'treatment', function(x) colMeans(x[,-1]) )
 
-stm_1_topic_props = data.frame(treatment=treatment, stm_1$theta) %>% 
-  group_by(treatment) %>% 
-  summarise_all(mean)
-
-stm_1_topic_props
-
-stm_1_diffs = stm_1_topic_props %>% 
+teststm1diffs = ddply(data.frame(treatment=treatment, teststm1$theta), 'treatment', function(x) colMeans(x[,-1]) )  %>% 
   select(-treatment) %>%
   sapply(diff) %>%
   sort %>%
   round(3)
 
-stm_1_diffs
+
+# ee = estimateEffect(~treatment, teststm1)
+# plot(ee, 'treatment',  method = 'difference', cov.value1='control', cov.value2 = 'treatment')
 
 
+rbind(testLDAdiffs, teststm0diffs, teststm1diffs)
 
-
-ee = estimateEffect(~treatment, stm_1, data.frame(treatment))
-plot(ee, covariate='treatment',  method = 'difference', cov.value1='control', cov.value2 = 'treatment')
-
-rbind(LDA_diffs, stm_0_diffs, stm_1_diffs)
-
-
+# 
+# # misc testing
+# Bk = rdirichlet(n=nd, alpha=rep(.05, nt)); colMeans(Bk)
+# Bk = rdirichlet(n=nt, alpha=rep(.05, nd)); rowMeans(Bk)
+# colMeans(theta_dk[1:250,])
+# colMeans(theta_dk[250:500,])
+# 
+# heatmap(wd, Rowv = NA, Colv = NA)

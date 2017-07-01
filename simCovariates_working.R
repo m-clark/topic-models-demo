@@ -1,26 +1,44 @@
+# Structural topic models -------------------------------------------------
+
+# Structural topic models allow us to model topic prevalence with a set of 
+# covariates of interest. In what follows, a data generating function similar to
+# the approach displayed in the main document is used to generate the data 
+# assuming the effects of two covariates. See the simTreatmentEffect.R for the a
+# model with the group effect alone.
+
+# See http://www.structuraltopicmodel.com/ for more info and references.
+
+
+
 gendat = function(nt=3, nd=500, nw=40){
-  #   B_k topic is a distribution over the fixed vocabulary; e.g. apple = .02, berry = .01, cat = .0001
-  #   theta_d topic proportions for dth document where theta_dk is the topic prop for the kth topic in doc d
-  #   z_d topic assignment for dth doc where z_dn is topic ass for nth word in doc d
-  #   w_d are the observed words in doc d where w_dn is the nth word in doc d
+  # nt: number of topics
+  # nd: number of docs
+  # nw: average number of words per doc
+  
+  # group: a binary group factor covariate
+  # x: a continuous covariate
+  # B: topic is a distribution over the fixed vocabulary; e.g. apple = .02, berry = .01, cat = .0001
+  # theta: topic proportions for each document where theta[i,] is the topic distribution for the ith document
+  # Z: term probabilities given topics
+  # wordList: are the observed words
   #   
-  require(DirichletReg)
-  B_k = rdirichlet(n=nw, alpha=rep(.05,nt)) 
+  # require(DirichletReg)
   x = sort(rnorm(nd))
   group = rep(0:1, nd/2)
   X = cbind(1, group, x)
   t1 = X %*% c(0, 1, 2)
   t2 = X %*% c(0, -1, -2)
   t3 = .4
-  alpha = plogis(cbind(t1,t2,t3))
+  alpha = plogis(cbind(t1, t2, t3))
   
   Nd = rpois(nd, 40)
   G0 = 1/3
-  theta_dk = rdirichlet(nd, alpha * G0)  # lda approach
-  # theta_dk = plogis(cbind(t1,t2,0))    # logistic normal approach
-  thetabeta = tcrossprod(theta_dk, B_k)
+  theta = rdirichlet(nd, alpha * G0)  # lda approach
+  # theta = plogis(cbind(t1,t2,0))    # logistic normal approach
+  B = DirichletReg::rdirichlet(n=nw, alpha=rep(.05, nt)) 
+  Z = tcrossprod(theta, B)
   wdList = vector('list', nd)
-  for (i in 1:nrow(thetabeta))  wdList[[i]] = t(rmultinom(1, Nd[i], thetabeta[i,]))
+  for (i in 1:nrow(Z))  wdList[[i]] = t(rmultinom(1, Nd[i], Z[i,]))
   ldaform = sapply(wdList, function(x) rbind(1:40,x), simplify = F)
   wd = do.call(rbind, wdList)
   wdList = lapply(wdList, function(wds) rep(paste0('word',1:length(wds)), wds))

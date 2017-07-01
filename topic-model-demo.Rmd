@@ -30,22 +30,22 @@ library(pander) # note, something about the recent dplyr change has broken pande
 
 This is a brief demonstration of a standard [latent dirichlet allocation](https://en.wikipedia.org/wiki/Latent_Dirichlet_allocation) (LDA) for <span class="emph">topic modeling</span>, geared toward those who want to dig a little deeper than merely getting a result from a package command. The basic idea is to first generate some documents based on the underlying model, and then we'll use the <span class="pack">topicmodels</span> package to recover the topics via LDA.  You can find a basic overview of topic models in a variety of places, and I'll eventually have a chapter in my [graphical and latent variable models document](http://m-clark.github.io/docs/sem). 
 
-Suffice it to say, one can approach this in (at least) one of two ways. In one sense, LDA is a dimension reduction technique, much like the family of techniques that includes PCA, factor analysis, non-negative matrix factorization etc.  We'll take a whole lot of terms, loosely defined, and boil them down to a few topics.   In this sense LDA is akin to discrete PCA.  Another way to think about this is more from the  perspective of factor analysis, where we are keenly interested in interpretation of the result, and want to know both what terms are associated with which topics, and what documents are more likely to present which topics.  The following is the plate diagram and description for standard LDA from Wikipedia, which follows the typical depiction in Blei's and other references.
+Suffice it to say, one can approach this in (at least) one of two ways. In one sense, LDA is a dimension reduction technique, much like the family of techniques that includes PCA, factor analysis, non-negative matrix factorization etc.  We'll take a whole lot of terms, loosely defined, and boil them down to a few topics.   In this sense LDA is akin to discrete PCA.  Another way to think about this is more from the  perspective of factor analysis, where we are keenly interested in interpretation of the result, and want to know both what terms are associated with which topics, and what documents are more likely to present which topics.  The following is the plate diagram and description for standard LDA from Blei, Jordan, and Ng (2003).
 
-<img src="LDA2.png" style="display:block; margin: 0 auto;" width=30%>
+<img src="img/lda_gm.png" style="display:block; margin: 0 auto;" width=30%>
 
 - $\alpha$ is the parameter of the Dirichlet prior on the per-document topic distributions
-- $\beta$  is the parameter of the Dirichlet prior on the per-topic word distribution
+- $\eta$  is the parameter of the Dirichlet prior on the per-topic word distribution
 - $\theta_m$ is the topic distribution for document $m$
-- $\varphi_k$ is the word distribution for topic $k$
+- $\beta_k$ is the word distribution for topic $k$
 - $z_{mn}$ is the topic for the $n$-th word in document $m$
 - $w_{mn}$ is the specific word
 
-Both $z$ and $w$ are from a multinomial draw based on the $\theta$ and $\varphi$ distributions respectively.  For a given document, one draws a topic, and given the topic, words are drawn from it.
+Both $z$ and $w$ are from a multinomial draw based on the $\theta$ and $\beta$ distributions respectively.  For a given document, one draws a topic, and given the topic, words are drawn from it.
 
 # Generating Documents
 
-In the standard setting, to be able to conduct such an analysis from text one needs a <span class="emph">document-term matrix</span>, where rows represent documents, and columns terms.  Terms are typically words but could be any <span class="emph">n-gram</span> of interest.  In practice, this is where you'll spend most of your time, as text is never ready, and must be scraped, converted, stemmed, cleaned etc.  In what follows we'll be generating the text based on the underlying topic model. We'll initially create $\theta$ and $\varphi$ noted above, then given those, draw topics and words given topics based on the multinomial distribution.  I've tried to keep the code general enough to make it easy to play with the parameter settings.
+In the standard setting, to be able to conduct such an analysis from text one needs a <span class="emph">document-term matrix</span>, where rows represent documents, and columns terms.  Terms are typically words but could be any <span class="emph">n-gram</span> of interest.  In practice, this is where you'll spend most of your time, as text is never ready, and must be scraped, converted, stemmed, cleaned etc.  In what follows we'll be generating the text based on the underlying topic model. We'll initially create $\theta$ and $\beta$ noted above, then given those, draw topics and words given topics based on the multinomial distribution.  I've tried to keep the code general enough to make it easy to play with the parameter settings.
 
 
 ## Topic Probabilities
@@ -103,31 +103,31 @@ cuts = list(1:breaks[1], (breaks[1]+1):breaks[2], (breaks[2]+1):Nterms)
 
 library(gtools)
 
-phi_k = matrix(0, ncol=3, nrow=Nterms)
+B_k = matrix(0, ncol=3, nrow=Nterms)
 
-phi_k[,1] = rdirichlet(n=1, alpha=c(rep(10, length(cuts[[1]])),       # topics for 1st 40% of terms
+B_k[,1] = rdirichlet(n=1, alpha=c(rep(10, length(cuts[[1]])),       # topics for 1st 40% of terms
                                     rep(1,  length(cuts[[2]])),
                                     rep(1,  length(cuts[[3]]))))
-phi_k[,2] = rdirichlet(n=1, alpha=c(rep(1,  length(cuts[[1]])),       # topics for middle 20%
+B_k[,2] = rdirichlet(n=1, alpha=c(rep(1,  length(cuts[[1]])),       # topics for middle 20%
                                     rep(10, length(cuts[[2]])),
                                     rep(1,  length(cuts[[3]]))))
-phi_k[,3] = rdirichlet(n=1, alpha=c(rep(1,  length(cuts[[1]])),       # topics for last 40%
+B_k[,3] = rdirichlet(n=1, alpha=c(rep(1,  length(cuts[[1]])),       # topics for last 40%
                                     rep(1,  length(cuts[[2]])),
                                     rep(10, length(cuts[[3]]))))
 ```
 
-```{r display_phi, echo=FALSE, eval=FALSE}
-# d3heatmap::d3heatmap(phi_k, Rowv = NA, Colv = NA, labRow=rep(NA, Nterms), 
+```{r display_B, echo=FALSE, eval=FALSE}
+# d3heatmap::d3heatmap(B_k, Rowv = NA, Colv = NA, labRow=rep(NA, Nterms), 
 #                      colors=viridis::inferno(n=100),
 #                      width=500, show_grid=F)
 library(heatmaply)
 
-heatmaply(phi_k, Colv=NA, Rowv=NA, colors=viridis::inferno(100),
+heatmaply(B_k, Colv=NA, Rowv=NA, colors=viridis::inferno(100),
           showticklabels=F, symm=F, hide_colorbar=T, plot_method='plotly',
           fontsize_row=0, fontsize_col=0)
 ```
 
-<img src="phi.png" style="display:block; margin: 0 auto;">
+<img src="img/topic_term.png" style="display:block; margin: 0 auto;">
 
 <br>
 
@@ -135,7 +135,7 @@ Now, given the topic assignment, we draw words for each document according to it
 
 ```{r generate_words}
 wordlist_1 = sapply(1:Ndocs, 
-                    function(i) t(rmultinom(1, size=WordsPerDoc[i], prob=phi_k[,z[i]]))  
+                    function(i) t(rmultinom(1, size=WordsPerDoc[i], prob=B_k[,z[i]]))  
                     , simplify = F)  
 
 # smash to doc-term matrix
@@ -170,7 +170,7 @@ table(wordlist_1[[1]]) %>%
 With a matrix approach, we don't need an explicit topic label, just the topic indicator matrix and topic probabilities. I will let you see this for yourself that the results are essentially the same, but we'll just stick to the previous results for this demo.
 
 ```{r topic_matrix}
-ZB = tcrossprod(Z, phi_k)                                                
+ZB = tcrossprod(Z, B_k)                                                
 dtm_2 = t(sapply(1:Ndocs, function(i) rmultinom(1, WordsPerDoc[i], ZB[i,])))
 wordlist_2 = apply(dtm_2, 1, function(row) rep(paste0('word', which(row!=0)), row[row!=0]) )
 
@@ -243,7 +243,7 @@ d3heatmap::d3heatmap(LDA_1Post$topics, Rowv = NA, Colv = NA, labRow=rep(NA, nrow
 # LDA_2Post = posterior(LDA_2)
 # d3heatmap::d3heatmap(LDA_2Post$topics, Rowv = NA, Colv = NA, colors=viridis::inferno(n=100))
 # library(LDAvis)
-# shinyJSON = createJSON(phi=exp(LDA_1@beta), theta=LDA_1@gamma, doc.length = WordsPerDoc,
+# shinyJSON = createJSON(B=exp(LDA_1@beta), theta=LDA_1@gamma, doc.length = WordsPerDoc,
 #                        vocab = paste0('word', 1:Nterms), term.frequency = colSums(dtm_1))
 # serVis(shinyJSON)
 ```
@@ -306,7 +306,7 @@ heatmaply(mat0, Colv=NA, Rowv=NA, colors=viridis::inferno(500, direction=-1),
 
 
 
-<img src="kl_div_docs.png" style="display:block; margin: 0 auto;" width=50%>
+<img src="img/kl_div_docs.png" style="display:block; margin: 0 auto;" width=50%>
 
 ## tidytext
 
@@ -365,7 +365,7 @@ terms(LDA_1, 10)
 terms(LDA_1, 10) %>%  pander(justify='lll')
 ```
 
-```{r tt_ldapost, echo=1, fig.align='center'}
+```{r tt_ldapost, echo=1, fig.align='center', dev.args = list(bg = 'transparent')}
 top_terms = tidy(LDA_1, matrix='beta') %>% 
   group_by(topic) %>%  
   top_n(10, beta) %>%
@@ -376,8 +376,9 @@ top_terms %>%
   mutate(term = reorder(term, beta)) %>%
   ggplot(aes(term, beta)) +
   geom_point(stat = "identity", size=4, color='#ff5500') +
-  geom_segment(aes(x=term, xend=term, y=0, yend=beta), size=1, color='#ff5500') +
-  facet_wrap(~ topic, scales = "free") +
+  # geom_segment(aes(x=term, xend=term, y=0, yend=beta), size=1, color='#ff5500') +
+  facet_wrap(~ topic, scales = "free_x") +
+  ylim(c(.01755, .04)) +
   labs(y='Probability of occurrence', xlab='') +
   theme(axis.text.x = element_text(size = 10, angle = 90, vjust = .5, hjust=0),
         axis.title.x= element_text(size = 10,  vjust = -.5, hjust=0),
@@ -458,4 +459,10 @@ d3heatmap(pcares$scores, Rowv=F, Colv=F)
 - Blei D.M., Ng A.Y., Jordan M.I. (2003). [Latent Dirichlet Allocation](http://jmlr.csail.mit.edu/papers/v3/blei03a.html). Journal of Machine Learning Research, 3, 993-1022. 
 - Mimno's list of LDA references https://mimno.infosci.cornell.edu/topics.html
 - Steyvers, M., & Griffiths, T. (2007). [Probabilistic topic models](http://psiexp.ss.uci.edu/research/papers/SteyversGriffithsLSABookFormatted.pdf).
+
+
+# Other stuff
+
+- [Structural topic model example](https://github.com/m-clark/topic-models-demo/blob/master/simTreatmentEffect.R) The above example essentially assumes a clustering of documents, where the 1st half is structurally different from the second half.  If we had the identifying group factor, we can actually incorporate this into the topic modeling process via what has been referrred to as structural topic modeling.  This script makes things more explicit in that regard.
+- [Structural topic model second example](https://github.com/m-clark/topic-models-demo/blob/master/simCovariates.R) Adds a numeric covariate.
 - [R example](https://github.com/m-clark/Miscellaneous-R-Code/blob/master/ModelFitting/Bayesian/topicModelgibbs.R) of Gibbs sampling estimation for topic models.

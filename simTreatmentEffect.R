@@ -10,6 +10,8 @@
 # second, and a positive difference (same magnitude) for the third topic. We
 # then will use standard LDA and STM to explore the group differences.
 
+# Packages needed: DirichletReg, topicmodels, stm, heatmaply, tidyverse
+
 # See http://www.structuraltopicmodel.com/ for more info and references.
 
 
@@ -57,7 +59,7 @@ str(docs, 1)
 
 # Standard LDA ------------------------------------------------------------
 
-library("topicmodels")
+library(topicmodels)
 lda_0 = posterior(LDA(docs[[1]], k=3, method = 'VEM', control=list(nstart=10, verbose=100)))  
 
 

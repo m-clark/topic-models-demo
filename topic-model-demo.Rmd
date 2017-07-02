@@ -41,16 +41,16 @@ Suffice it to say, one can approach this in (at least) one of two ways. In one s
 - $z_{mn}$ is the topic for the $n$-th word in document $m$
 - $w_{mn}$ is the specific word
 
-Both $z$ and $w$ are from a multinomial draw based on the $\theta$ and $\beta$ distributions respectively.  For a given document, one draws a topic, and given the topic, words are drawn from it.
+Both $z$ and $w$ are from a multinomial draw based on the $\theta$ and $\beta$ distributions respectively.  The key idea is that, to produce a given document, one draws a topic, and given the topic, words are drawn from it[^smooth].
 
 # Generating Documents
 
-In the standard setting, to be able to conduct such an analysis from text one needs a <span class="emph">document-term matrix</span>, where rows represent documents, and columns terms.  Terms are typically words but could be any <span class="emph">n-gram</span> of interest.  In practice, this is where you'll spend most of your time, as text is never ready, and must be scraped, converted, stemmed, cleaned etc.  In what follows we'll be generating the text based on the underlying topic model. We'll initially create $\theta$ and $\beta$ noted above, then given those, draw topics and words given topics based on the multinomial distribution.  I've tried to keep the code general enough to make it easy to play with the parameter settings.
+In the standard setting, to be able to conduct such an analysis from text one needs a <span class="emph">document-term matrix</span>, where rows represent documents, and columns terms.  Terms are typically words but could be any <span class="emph">n-gram</span> of interest.  In practice, this is where you'll spend most of your time, as text is never ready for analysis, and must be scraped, converted, stemmed, cleaned etc.  In what follows we'll be generating the text based on the underlying topic model. We'll initially create $\theta$ and $\beta$ noted above, then given those, draw topics and words given topics based on the multinomial distribution.  I've tried to keep the code general enough to make it easy to play with the parameter settings.
 
 
 ## Topic Probabilities
 
-We begin the simulation by creating topic probabilities. There will be $k=3$ topics. Half of our documents will have probabilities of topics for them ($\theta_1$) which will be notably different from the other half ($\theta_2$).  Specifically, the first half will show higher probability of topic 'A' and 'B', while the second half of documents show higher probability of topic 'C'. What we'll end up with here is an $m$ x $k$ matrix of probabilities $\theta$ where each $m$ document has a non-zero probability for each $k$ topic.  Note that in the plate diagram, these would come from a $\mathcal{Dirichlet}(\mathbf{\alpha})$ draw rather than be fixed like this, but hopefully this will make things clear starting out. Later we will use the Dirichlet for the terms. 
+We begin the simulation by creating topic probabilities. There will be $k=3$ topics[^choosek]. Half of our documents will have probabilities of topics for them ($\theta_1$) which will be notably different from the other half ($\theta_2$).  Specifically, the first half will show higher probability of topic 'A' and 'B', while the second half of documents show higher probability of topic 'C'. What we'll end up with here is an $m$ x $k$ matrix of probabilities $\theta$ where each $m$ document has a non-zero probability for each $k$ topic.  Note that in the plate diagram, these would come from a $\mathcal{Dirichlet}(\mathbf{\alpha})$ draw rather than be fixed like this, but hopefully this will make things clear starting out. Later we will use the Dirichlet for the terms. 
 
 
 ```{r topic_probabilities}
@@ -83,18 +83,18 @@ With topic probabilities in hand, we'll draw topic assignments from a <span clas
 firsthalf = 1:(Ndocs/2)
 secondhalf = (Ndocs/2+1):Ndocs
 
-Z = t(apply(theta, 1, rmultinom, n=1, size=1))    # draw topic assignment
-colMeans(Z[firsthalf,])                           # roughly equal to theta_1
-colMeans(Z[secondhalf,])                          # roughly equal to theta_2
+Z = apply(theta, 1, rmultinom, n=1, size=1)        # draw topic assignment
+rowMeans(Z[,firsthalf])                            # roughly equal to theta_1
+rowMeans(Z[,secondhalf])                           # roughly equal to theta_2
 
-z = apply(Z, 1, which.max)                        # topic assignment as arbitrary label 1:3
+z = apply(Z, 2, which.max)                         # topic assignment as arbitrary label 1:3
 # z = apply(theta, 1, function(topprob) extraDistr::rcat(1, topprob)) # topic assignment via categorical dist
 ```
 
 
 ## Topics
 
-Next we need the topics themselves. Topics are probability distributions of terms, and in what follows we'll use the Dirichlet distribution to provide the prior probabilities for the terms. With topic A, we'll make the first ~40% of terms have a higher probability of occurring, the last ~40% go with topic C, and the middle more associated with topic B. To give a sense of the alpha settings, `alpha=c(8,1,1)` would result in topic probabilities of .8, .1, .1, as would `alpha=c(80,10,10)`, though the latter would serve as a much stronger prior. We'll use the <span class="pack">gtools</span> package for the <span class="func">rdirichlet</span> function. I also provide a visualization, where the dark represents terms that are notably less likely to be associated with a particular topic.
+Next we need the topics themselves. Topics are probability distributions of terms, and in what follows we'll use the Dirichlet distribution to provide the prior probabilities for the terms[^termalpha]. With topic A, we'll make the first ~40% of terms have a higher probability of occurring, the last ~40% go with topic C, and the middle more associated with topic B. To give a sense of the alpha settings, `alpha=c(8,1,1)` would result in topic probabilities of .8, .1, .1, as would `alpha=c(80,10,10)`, though the latter would serve as a much stronger prior. We'll use the <span class="pack">gtools</span> package for the <span class="func">rdirichlet</span> function. I also provide a visualization of the term-topic matrix, where the dark represents terms that are notably less likely to be associated with a particular topic. 
 
 ```{r topic_dist}
 Nterms = max(WordsPerDoc)
@@ -105,15 +105,15 @@ library(gtools)
 
 B_k = matrix(0, ncol=3, nrow=Nterms)
 
-B_k[,1] = rdirichlet(n=1, alpha=c(rep(10, length(cuts[[1]])),       # topics for 1st 40% of terms
-                                    rep(1,  length(cuts[[2]])),
-                                    rep(1,  length(cuts[[3]]))))
-B_k[,2] = rdirichlet(n=1, alpha=c(rep(1,  length(cuts[[1]])),       # topics for middle 20%
-                                    rep(10, length(cuts[[2]])),
-                                    rep(1,  length(cuts[[3]]))))
-B_k[,3] = rdirichlet(n=1, alpha=c(rep(1,  length(cuts[[1]])),       # topics for last 40%
-                                    rep(1,  length(cuts[[2]])),
-                                    rep(10, length(cuts[[3]]))))
+B_k[,1] = rdirichlet(n=1, alpha=c(rep(10, length(cuts[[1]])),    # topics for 1st 40% of terms
+                                  rep(1,  length(cuts[[2]])),
+                                  rep(1,  length(cuts[[3]]))))
+B_k[,2] = rdirichlet(n=1, alpha=c(rep(1,  length(cuts[[1]])),    # topics for middle 20%
+                                  rep(10, length(cuts[[2]])),
+                                  rep(1,  length(cuts[[3]]))))
+B_k[,3] = rdirichlet(n=1, alpha=c(rep(1,  length(cuts[[1]])),    # topics for last 40%
+                                  rep(1,  length(cuts[[2]])),
+                                  rep(10, length(cuts[[3]]))))
 ```
 
 ```{r display_B, echo=FALSE, eval=FALSE}
@@ -131,7 +131,7 @@ heatmaply(B_k, Colv=NA, Rowv=NA, colors=viridis::inferno(100),
 
 <br>
 
-Now, given the topic assignment, we draw words for each document according to its size via a multinomial draw.
+Now, given the topic assignment, we draw words for each document according to its size via a multinomial draw, and with that, we have our document-term matrix.  However, we can also think of each document a merely a <span class="emph">bag of words</span>, where order, grammar etc. is ignored, but the frequency of term usage is retained[^BoW].
 
 ```{r generate_words}
 wordlist_1 = sapply(1:Ndocs, 
@@ -167,10 +167,10 @@ table(wordlist_1[[1]]) %>%
 
 <br>
 
-With a matrix approach, we don't need an explicit topic label, just the topic indicator matrix and topic probabilities. I will let you see this for yourself that the results are essentially the same, but we'll just stick to the previous results for this demo.
+Note that with a matrix approach, we don't need an explicit topic label, just the topic indicator matrix and topic probabilities. I will let you see this for yourself that the results are essentially the same, but we'll just stick to the previous results for this demonstration.
 
 ```{r topic_matrix}
-ZB = tcrossprod(Z, B_k)                                                
+ZB = crossprod(Z, t(B_k))                                                
 dtm_2 = t(sapply(1:Ndocs, function(i) rmultinom(1, WordsPerDoc[i], ZB[i,])))
 wordlist_2 = apply(dtm_2, 1, function(row) rep(paste0('word', which(row!=0)), row[row!=0]) )
 
@@ -195,7 +195,7 @@ colnames(dtm_2) = paste0('word', 1:Nterms)
 
 # Topic Models
 
-We're now ready to run the models.   Depending on the number of documents, terms, and other settings, it is possible to get an unsatisfactory/random result. Usually a redo is enough to recover topic probabilities, but the commented settings are an attempt to get better result from the outset.  However, they will notably slow things down.
+We're now ready to run the models.   Depending on the number of documents, terms, and other settings you might fiddle with, it is possible to get an unsatisfactory result. Usually a redo is enough to recover topic probabilities, but the commented settings are an attempt to get better result from the outset.  However, they will notably slow things down.  The only thing we'll do here is incorporate multiple random starts.
 
 ```{r run_lda, eval=F, echo=1:4}
 library(topicmodels)
@@ -356,7 +356,7 @@ dtm
 
 The above information tells us how much <span class="emph">sparsity</span> (or zero counts) we have in the matrix (`r round(sum(dtm==0)/prod(dim(dtm)), 2)*100`%), the actual number of zeros vs. non-zeros that produce the sparsity percentage, the maximal word/term length (`r max(sapply(colnames(dtm), nchar))`), and the weighting used. In this case we are dealing with the raw frequencies, thus the weighting is just `r attr(dtm, 'weighting')[1]`.
 
-Once you have the topic model results, you can then start working with term and  topic probabilities via the functions in <span class="pack">topicmodels</span> or the 'tidy' version of the LDA object and <span class="pack">tidytext</span>. First we'll get the top 10 terms and graphically display them.  Recall that topic C-3 should be seen with later words, and A-1 with earlier, and this is born out fairly clearly. Topic B was our less frequent topic with a smaller vocabulary.  See also the <span class="pack">LDAvis</span> for an interactive way to examine topic and term relationships.
+Once you have the topic model results, you can then start working with term and  topic probabilities via the functions in <span class="pack">topicmodels</span> or the 'tidy' version of the LDA object and <span class="pack">tidytext</span>. First we'll get the top 10 terms and graphically display them.  Recall that topic C-3 should be seen with later words, and A-1 with earlier, and this is born out fairly clearly. Topic B was our less frequent topic with a smaller vocabulary.  See the <span class="pack">LDAvis</span> package also for an interactive way to examine topic and term relationships.
 
 ```{r terms, eval=FALSE}
 terms(LDA_1, 10)
@@ -388,7 +388,7 @@ top_terms %>%
 ```
 
 <br>
-We can get at the topic probabilities for each document as follows. For this demonstration, probabilities are essentially 1 or 0, something you may not find in practice.
+We can get at the topic probabilities for each document as follows. For this demonstration, for clarity we set things up such that probabilities are essentially 1 or 0 for documents presenting some topic. Do not expect this in practice.
 
 ```{r topic_posterior, eval=FALSE}
 doctop_probs = tidy(LDA_1, matrix = "gamma")
@@ -443,7 +443,9 @@ Looks like we're right where we'd expect.
 
 This document conceptually demonstrates the mechanics of LDA's data generating process.  I suggest you go back and fiddle with the settings to see how things change.  For example, one could use an actual Dirichlet draw for theta, and a more loose setting for the term-topic affiliation for a more nuanced result. 
 
-Note that just about everything you'll come across with LDA will regard topic modeling, but it is by no means restricted to the analysis of text.  In fact, one of its earliest uses was actually in genetics.  Any time you have a matrix of counts like this, LDA is a potential candidate for analysis, and might be preferable to PCA or factor analysis. 
+One common extension of LDA is the <span class="emph">correlated topic model</span>. The above approach does not estimate topic correlations, and the Dirichlet prior fixes them based on alpha. The CTM would help account for the fact that something with a 'business' topic might also have the 'finance' topic.  Other extensions include <span class="emph">supervised LDA</span>, where topics might be used in classification tasks, <span class="emph">structural topic models</span>, where we examine predictors of topic prevalence, <span class="emph">dynamic topic models</span>, where topics may evolve over time, and many others.
+
+Note that just about everything you'll come across with LDA will regard topic modeling, but it is by no means restricted to the analysis of text.  In fact, one of its earliest uses was actually in genetics[^firstlda].  Any time you have a matrix of counts like this, LDA is a potential candidate for analysis, and might be preferable to PCA or factor analysis.  It is a very useful technique to have in your statistical toolbox.
 
 
 ```{r pcafa_comparison, echo=FALSE, eval=FALSE}
@@ -463,6 +465,17 @@ d3heatmap(pcares$scores, Rowv=F, Colv=F)
 
 # Other stuff
 
-- [Structural topic model example](https://github.com/m-clark/topic-models-demo/blob/master/simTreatmentEffect.R) The above example essentially assumes a clustering of documents, where the 1st half is structurally different from the second half.  If we had the identifying group factor, we can actually incorporate this into the topic modeling process via what has been referrred to as structural topic modeling.  This script makes things more explicit in that regard.
+- [Structural topic model example](https://github.com/m-clark/topic-models-demo/blob/master/simTreatmentEffect.R) The above example essentially assumes a clustering of documents, where the 1st half is structurally different from the second half.  If we had the identifying group factor, we can actually incorporate this into the topic modeling process via what has been referred to as structural topic modeling.  This script makes things more explicit in that regard.
 - [Structural topic model second example](https://github.com/m-clark/topic-models-demo/blob/master/simCovariates.R) Adds a numeric covariate.
 - [R example](https://github.com/m-clark/Miscellaneous-R-Code/blob/master/ModelFitting/Bayesian/topicModelgibbs.R) of Gibbs sampling estimation for topic models.
+
+
+[^smooth]: Sometimes you will see LDA without the $\eta$.  In Blei et al.'s original article what is shown is called 'smoothed' LDA, and is a more fully Bayesian approach where $\eta$ serves as a prior allowing a non-zero probability for all terms.
+
+[^choosek]: In practice, you must decide on a $k$, and that will often depend on the goals of analysis. For example, in a highly predictive focused, possibly big data situation, possibly supervised, one might be dealing with hundreds of topics for a given corpus.  In more theoretically driven settings, one might desire a few for practical reasons and perhaps allow for greater interpretability.  Statistics such as <span class="emph">perplexity</span> can be used to choose the 'best' solution, but in that latter setting it might be better to use interpretability.
+
+[^termalpha]: Note that in practice, the alpha parameter would be constant, and serve to simply allow for each term to have some probability of belonging to any topic. See footnote 1 above.
+
+[^BoW]: It might seem like such things would be important for topic analysis, but it turns out they are not.  Topic modeling can distinguish *bank* as belonging to a topic on rivers as well as one on financial matters.
+
+[^firstlda]: Pritchard, J. K.; Stephens, M.; Donnelly, P. (2000). *Inference of population structure using multilocus genotype data*. Genetics.
